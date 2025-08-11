@@ -142,5 +142,31 @@ node_modules/
 
 tests/*
 .idea/*
+# Виртуальные окружения
+venv/
+.venv/
+
+# Кэш, временные файлы и логи
+__pycache__/
+*.py[cod]
+*.log
+.cache/
+# Файлы с куками
+CookiesDir/
+*.cookie
+
+# Файлы с видео
+VideosDirPath/
+*.mp4
+*.mov
+uploaded/
+
+# Токены, ключи, данные
+titles.txt
+.env
+
+# Telegram, API, секреты (если есть)
+secrets.json
+*.secret
 
 tiktok_uploader\tiktok-signature\command.txt

@@ -1,0 +1,12 @@
+# Настройки прокси
+PROXY=185.232.18.41:63518
+PROXY_USER=cy3jmdzR
+PROXY_PASS=FG4Av12z
+PROXY_TYPE=http
+
+# Telegram настройки (опционально)
+TELEGRAM_BOT_TOKEN=your_bot_token_here
+TELEGRAM_CHAT_ID=your_chat_id_here
+
+# Дополнительные настройки
+# PROXY_TYPE может быть: http, https, socks4, socks5 
