@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Uploader Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body class="bg-gray-100">
+    <div x-data="dashboard()" x-init="init()" class="min-h-screen">
+        <!-- Header -->
+        <header class="bg-white shadow-sm border-b">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between items-center py-4">
+                    <div class="flex items-center">
+                        <i class="fas fa-video text-2xl text-blue-600 mr-3"></i>
+                        <h1 class="text-2xl font-bold text-gray-900">Video Uploader</h1>
+                    </div>
+                    
+                    <!-- Connection Status -->
+                    <div class="flex items-center space-x-4">
+                        <div class="flex items-center">
+                            <div class="h-2 w-2 rounded-full mr-2" 
+                                 :class="connected ? 'bg-green-400 animate-pulse' : 'bg-red-400'"></div>
+                            <span class="text-sm text-gray-600" x-text="connected ? 'Connected' : 'Disconnected'"></span>
+                        </div>
+                        
+                        <button @click="refreshData()" 
+                                class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                            <i class="fas fa-sync-alt mr-2"></i>Refresh
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            
+            <!-- Stats Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <div class="bg-white rounded-lg shadow p-6">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <i class="fas fa-video text-2xl text-blue-600"></i>
+                        </div>
+                        <div class="ml-5 w-0 flex-1">
+                            <dl>
+                                <dt class="text-sm font-medium text-gray-500 truncate">Pending Videos</dt>
+                                <dd class="text-lg font-medium text-gray-900" x-text="status.file_stats?.videos_count || 0"></dd>
+                            </dl>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-lg shadow p-6">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <i class="fas fa-tasks text-2xl text-green-600"></i>
+                        </div>
+                        <div class="ml-5 w-0 flex-1">
+                            <dl>
+                                <dt class="text-sm font-medium text-gray-500 truncate">Running Tasks</dt>
+                                <dd class="text-lg font-medium text-gray-900" x-text="status.scheduler?.running || 0"></dd>
+                            </dl>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-lg shadow p-6">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <i class="fas fa-check-circle text-2xl text-green-600"></i>
+                        </div>
+                        <div class="ml-5 w-0 flex-1">
+                            <dl>
+                                <dt class="text-sm font-medium text-gray-500 truncate">Completed Today</dt>
+                                <dd class="text-lg font-medium text-gray-900" x-text="status.scheduler?.completed || 0"></dd>
+                            </dl>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-lg shadow p-6">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <i class="fas fa-exclamation-triangle text-2xl text-red-600"></i>
+                        </div>
+                        <div class="ml-5 w-0 flex-1">
+                            <dl>
+                                <dt class="text-sm font-medium text-gray-500 truncate">Failed Tasks</dt>
+                                <dd class="text-lg font-medium text-gray-900" x-text="status.scheduler?.failed || 0"></dd>
+                            </dl>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                
+                <!-- Quick Upload Panel -->
+                <div class="bg-white rounded-lg shadow">
+                    <div class="px-6 py-4 border-b border-gray-200">
+                        <h2 class="text-lg font-medium text-gray-900">
+                            <i class="fas fa-upload mr-2"></i>Quick Upload
+                        </h2>
+                    </div>
+                    <div class="p-6">
+                        <form @submit.prevent="quickUpload()">
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">Platform</label>
+                                    <select x-model="uploadForm.platform" 
+                                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                        <template x-for="platform in platforms" :key="platform">
+                                            <option :value="platform" x-text="platform.charAt(0).toUpperCase() + platform.slice(1)"></option>
+                                        </template>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">Title (optional)</label>
+                                    <input type="text" x-model="uploadForm.title" 
+                                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                           placeholder="Leave empty to use from titles.txt">
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">Upload File</label>
+                                    <input type="file" accept="video/*" x-ref="fileInput"
+                                           class="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+                                    <p class="text-xs text-gray-500 mt-1">Or leave empty to use next video from queue</p>
+                                </div>
+
+                                <button type="submit" :disabled="uploading"
+                                        class="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                                    <span x-show="!uploading">
+                                        <i class="fas fa-upload mr-2"></i>Upload Now
+                                    </span>
+                                    <span x-show="uploading">
+                                        <i class="fas fa-spinner fa-spin mr-2"></i>Uploading...
+                                    </span>
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Schedule Upload Panel -->
+                <div class="bg-white rounded-lg shadow">
+                    <div class="px-6 py-4 border-b border-gray-200">
+                        <h2 class="text-lg font-medium text-gray-900">
+                            <i class="fas fa-clock mr-2"></i>Schedule Upload
+                        </h2>
+                    </div>
+                    <div class="p-6">
+                        <form @submit.prevent="scheduleUpload()">
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">Platform</label>
+                                    <select x-model="scheduleForm.platform"
+                                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                        <template x-for="platform in platforms" :key="platform">
+                                            <option :value="platform" x-text="platform.charAt(0).toUpperCase() + platform.slice(1)"></option>
+                                        </template>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">When to upload</label>
+                                    <input type="datetime-local" x-model="scheduleForm.scheduledTime"
+                                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">Priority</label>
+                                    <select x-model="scheduleForm.priority"
+                                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                        <option value="low">Low</option>
+                                        <option value="normal" selected>Normal</option>
+                                        <option value="high">High</option>
+                                        <option value="urgent">Urgent</option>
+                                    </select>
+                                </div>
+
+                                <div class="flex space-x-3">
+                                    <button type="submit" 
+                                            class="flex-1 bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 transition-colors">
+                                        <i class="fas fa-plus mr-2"></i>Schedule Single
+                                    </button>
+                                    
+                                    <button type="button" @click="batchSchedule()"
+                                            class="flex-1 bg-purple-600 text-white py-2 px-4 rounded-lg hover:bg-purple-700 transition-colors">
+                                        <i class="fas fa-layer-group mr-2"></i>Batch (5)
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Tasks Table -->
+            <div class="bg-white rounded-lg shadow mt-8">
+                <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                    <h2 class="text-lg font-medium text-gray-900">
+                        <i class="fas fa-list mr-2"></i>Recent Tasks
+                    </h2>
+                    <div class="flex space-x-2">
+                        <select x-model="taskFilter" @change="loadTasks()"
+                                class="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm">
+                            <option value="">All Tasks</option>
+                            <option value="pending">Pending</option>
+                            <option value="running">Running</option>
+                            <option value="completed">Completed</option>
+                            <option value="failed">Failed</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Task</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Platform</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            <template x-for="task in tasks" :key="task.id">
+                                <tr>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <div class="text-sm font-medium text-gray-900" x-text="task.title"></div>
+                                        <div class="text-sm text-gray-500">ID: <span x-text="task.id.substring(0, 8)"></span></div>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
+                                              :class="task.platform === 'tiktok' ? 'bg-pink-100 text-pink-800' : 'bg-purple-100 text-purple-800'"
+                                              x-text="task.platform.charAt(0).toUpperCase() + task.platform.slice(1)">
+                                        </span>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
+                                              :class="{
+                                                'bg-yellow-100 text-yellow-800': task.status === 'pending',
+                                                'bg-blue-100 text-blue-800': task.status === 'running',
+                                                'bg-green-100 text-green-800': task.status === 'completed',
+                                                'bg-red-100 text-red-800': task.status === 'failed',
+                                                'bg-gray-100 text-gray-800': task.status === 'cancelled'
+                                              }"
+                                              x-text="task.status.charAt(0).toUpperCase() + task.status.slice(1)">
+                                        </span>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                        <span x-text="formatDate(task.created_at)"></span>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                        <button @click="cancelTask(task.id)" 
+                                                x-show="task.status === 'pending' || task.status === 'scheduled'"
+                                                class="text-red-600 hover:text-red-900">Cancel</button>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </main>
+
+        <!-- Toast Notifications -->
+        <div class="fixed bottom-4 right-4 space-y-2" x-show="notifications.length > 0">
+            <template x-for="(notification, index) in notifications" :key="index">
+                <div class="bg-white rounded-lg shadow-lg p-4 max-w-sm transform transition-all duration-300"
+                     :class="notification.type === 'success' ? 'border-l-4 border-green-500' : 'border-l-4 border-red-500'"
+                     x-show="notification.show"
+                     x-transition:enter="translate-x-full"
+                     x-transition:enter-end="translate-x-0"
+                     x-transition:leave="translate-x-full">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <i :class="notification.type === 'success' ? 'fas fa-check-circle text-green-500' : 'fas fa-exclamation-circle text-red-500'"></i>
+                        </div>
+                        <div class="ml-3">
+                            <p class="text-sm font-medium text-gray-900" x-text="notification.title"></p>
+                            <p class="text-sm text-gray-500" x-text="notification.message"></p>
+                        </div>
+                        <div class="ml-auto pl-3">
+                            <button @click="removeNotification(index)" class="text-gray-400 hover:text-gray-600">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    <script>
+        function dashboard() {
+            return {
+                connected: false,
+                status: {},
+                videos: [],
+                tasks: [],
+                platforms: {{ platforms | tojsonfilter }},
+                uploading: false,
+                taskFilter: '',
+                notifications: [],
+                
+                uploadForm: {
+                    platform: '{{ platforms[0] if platforms else "tiktok" }}',
+                    title: '',
+                    description: ''
+                },
+                
+                scheduleForm: {
+                    platform: '{{ platforms[0] if platforms else "tiktok" }}',
+                    scheduledTime: '',
+                    priority: 'normal'
+                },
+
+                init() {
+                    this.refreshData();
+                    this.connectWebSocket();
+                    setInterval(() => this.refreshData(), 10000); // Refresh every 10 seconds
+                },
+
+                connectWebSocket() {
+                    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                    const ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
+                    
+                    ws.onopen = () => {
+                        this.connected = true;
+                    };
+                    
+                    ws.onclose = () => {
+                        this.connected = false;
+                        // Reconnect after 5 seconds
+                        setTimeout(() => this.connectWebSocket(), 5000);
+                    };
+                    
+                    ws.onmessage = (event) => {
+                        const message = JSON.parse(event.data);
+                        this.handleWebSocketMessage(message);
+                    };
+                },
+
+                async refreshData() {
+                    try {
+                        const [statusResponse, tasksResponse] = await Promise.all([
+                            fetch('/api/status'),
+                            fetch('/api/tasks')
+                        ]);
+                        
+                        this.status = await statusResponse.json();
+                        this.tasks = await tasksResponse.json();
+                    } catch (error) {
+                        console.error('Failed to refresh data:', error);
+                    }
+                },
+
+                async quickUpload() {
+                    this.uploading = true;
+                    const formData = new FormData();
+                    formData.append('platform', this.uploadForm.platform);
+                    if (this.uploadForm.title) formData.append('title', this.uploadForm.title);
+                    if (this.$refs.fileInput.files[0]) formData.append('file', this.$refs.fileInput.files[0]);
+                    
+                    try {
+                        const response = await fetch('/api/upload', {
+                            method: 'POST',
+                            body: formData
+                        });
+                        
+                        const result = await response.json();
+                        this.showNotification(
+                            result.success ? 'success' : 'error',
+                            result.success ? 'Upload Successful' : 'Upload Failed',
+                            result.message
+                        );
+                        
+                        if (result.success) {
+                            this.uploadForm.title = '';
+                            this.$refs.fileInput.value = '';
+                        }
+                    } catch (error) {
+                        this.showNotification('error', 'Upload Failed', error.message);
+                    } finally {
+                        this.uploading = false;
+                    }
+                },
+
+                async scheduleUpload() {
+                    const formData = new FormData();
+                    formData.append('platform', this.scheduleForm.platform);
+                    if (this.scheduleForm.scheduledTime) formData.append('scheduled_time', this.scheduleForm.scheduledTime);
+                    formData.append('priority', this.scheduleForm.priority);
+                    
+                    try {
+                        const response = await fetch('/api/schedule', {
+                            method: 'POST',
+                            body: formData
+                        });
+                        
+                        const result = await response.json();
+                        this.showNotification(
+                            result.success ? 'success' : 'error',
+                            result.success ? 'Task Scheduled' : 'Scheduling Failed',
+                            result.success ? `Task ID: ${result.task_id}` : result.message
+                        );
+                    } catch (error) {
+                        this.showNotification('error', 'Scheduling Failed', error.message);
+                    }
+                },
+
+                async batchSchedule() {
+                    const formData = new FormData();
+                    formData.append('platform', this.scheduleForm.platform);
+                    formData.append('max_videos', '5');
+                    
+                    try {
+                        const response = await fetch('/api/batch-schedule', {
+                            method: 'POST',
+                            body: formData
+                        });
+                        
+                        const result = await response.json();
+                        this.showNotification(
+                            result.success ? 'success' : 'error',
+                            result.success ? 'Batch Scheduled' : 'Batch Scheduling Failed',
+                            result.success ? `${result.count} tasks scheduled` : result.message
+                        );
+                    } catch (error) {
+                        this.showNotification('error', 'Batch Scheduling Failed', error.message);
+                    }
+                },
+
+                async cancelTask(taskId) {
+                    try {
+                        const response = await fetch(`/api/tasks/${taskId}`, { method: 'DELETE' });
+                        const result = await response.json();
+                        
+                        this.showNotification(
+                            result.success ? 'success' : 'error',
+                            result.success ? 'Task Cancelled' : 'Cancellation Failed',
+                            result.success ? `Task ${taskId.substring(0, 8)} cancelled` : 'Failed to cancel task'
+                        );
+                        
+                        if (result.success) {
+                            await this.refreshData();
+                        }
+                    } catch (error) {
+                        this.showNotification('error', 'Cancellation Failed', error.message);
+                    }
+                },
+
+                handleWebSocketMessage(message) {
+                    if (message.type === 'upload_result') {
+                        this.showNotification(
+                            message.data.success ? 'success' : 'error',
+                            message.data.success ? 'Upload Complete' : 'Upload Failed',
+                            `${message.data.platform}: ${message.data.filename}`
+                        );
+                    } else if (message.type === 'task_completed') {
+                        this.showNotification('success', 'Task Completed', `${message.data.filename}`);
+                    }
+                    
+                    // Refresh data on any task update
+                    if (message.type.includes('task_')) {
+                        this.refreshData();
+                    }
+                },
+
+                showNotification(type, title, message) {
+                    const notification = { type, title, message, show: true };
+                    this.notifications.push(notification);
+                    
+                    // Auto remove after 5 seconds
+                    setTimeout(() => {
+                        const index = this.notifications.indexOf(notification);
+                        if (index > -1) this.removeNotification(index);
+                    }, 5000);
+                },
+
+                removeNotification(index) {
+                    this.notifications.splice(index, 1);
+                },
+
+                formatDate(dateString) {
+                    return new Date(dateString).toLocaleString();
+                }
+            }
+        }
+    </script>
+</body>
+</html>
