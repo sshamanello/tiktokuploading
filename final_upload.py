@@ -9,6 +9,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from datetime import datetime
 import undetected_chromedriver as uc
 from proxy_manager import ProxyManager
+import time
 
 
 # === INIT ===
@@ -57,7 +58,8 @@ def get_driver():
     options = proxy_manager.get_enhanced_chrome_options()
 
     try:
-        # Важно: указываем актуальную версию Chrome
+    # Важно: указываем актуальную версию Chrome
+        # options.binary_location = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" # Example: set a default binary location
         driver = uc.Chrome(version_main=138, options=options)
 
         # Убираем следы автоматизации
@@ -117,12 +119,139 @@ def load_cookies(driver, path):
         except: continue
     driver.refresh()
 
-def remove_cookie_banner(driver):
+def remove_cookie_banner(driver, timeout=12, prefer="accept"):
+    """
+    Закрывает cookie-баннер TikTok.
+    prefer: "accept" (Разрешить все) или "reject" (Отклонить).
+    Возвращает True, если баннер убран (клик/удаление), иначе False.
+    """
+    import time
+    from selenium.common.exceptions import WebDriverException
+    from selenium.webdriver.common.by import By
+
+    deadline = time.time() + timeout
+    action = "accept" if prefer not in ("reject", "decline") else "reject"
+
+    js_handle_banner = r"""
+    const prefer = arguments[0];
+    // Список потенциальных хостов/контейнеров баннера
+    const hostSel = "tiktok-cookie-banner, .tiktok-cookie-banner, .paas_tiktok";
+    let clicked = false, removed = 0;
+
+    // Пытаемся кликнуть в Shadow DOM (если открыт)
+    const tryClickInRoot = (root, texts) => {
+      if (!root) return false;
+      const btns = root.querySelectorAll('button');
+      for (const b of btns) {
+        const t = (b.textContent || '').trim();
+        for (const n of texts) {
+          if (t === n || t.includes(n)) {
+            try { b.click(); return true; } catch (e) {
+              try {
+                b.dispatchEvent(new MouseEvent('click', {bubbles:true, cancelable:true}));
+                return true;
+              } catch(_) {}
+            }
+          }
+        }
+      }
+      return false;
+    };
+
+    // 1) Ищем кастомный тег и пробуем кликнуть внутри shadowRoot
+    const hosts = Array.from(document.querySelectorAll(hostSel));
+    for (const host of hosts) {
+      const root = host.shadowRoot || null;
+      if (prefer === "accept") {
+        if (tryClickInRoot(root, ["Разрешить все","Allow all","Accept all"])) { clicked = true; break; }
+      } else {
+        if (tryClickInRoot(root, ["Отклонить","Reject","Decline"])) { clicked = true; break; }
+      }
+    }
+
+    // 2) Если не кликнулось через shadowRoot, пробуем обычный DOM внутри контейнеров
+    if (!clicked) {
+      for (const host of hosts) {
+        const btns = host.querySelectorAll('button');
+        for (const b of btns) {
+          const t = (b.textContent || '').trim();
+          if ((prefer === "accept" && (t === "Разрешить все" || /Allow|Accept/i.test(t))) ||
+              (prefer !== "accept" && (t.startsWith("Отклонить") || /Reject|Decline/i.test(t)))) {
+            try { b.click(); clicked = true; break; } catch (e) {
+              try {
+                b.dispatchEvent(new MouseEvent('click', {bubbles:true, cancelable:true}));
+                clicked = true; break;
+              } catch(_) {}
+            }
+          }
+        }
+        if (clicked) break;
+      }
+    }
+
+    // 3) Если так и не вышло — скрываем/удаляем хосты, чтобы они не перехватывали клики
+    if (!clicked) {
+      const blockers = document.querySelectorAll(hostSel);
+      blockers.forEach(el => {
+        try {
+          el.style.setProperty('display','none','important');
+          el.style.setProperty('pointer-events','none','important');
+          el.remove();
+          removed++;
+        } catch(e){}
+      });
+    }
+
+    const remaining = !!document.querySelector(hostSel);
+    return { clicked, removed, remaining };
+    """
+
+    def try_here():
+        try:
+            res = driver.execute_script(js_handle_banner, action) or {}
+            clicked = bool(res.get("clicked"))
+            remaining = bool(res.get("remaining"))
+            if clicked:
+                return "clicked"
+            if not remaining:
+                return "removed"
+            return None
+        except WebDriverException:
+            return None
+
+    # Основные попытки в текущем документе
+    while time.time() < deadline:
+        outcome = try_here()
+        if outcome in ("clicked", "removed"):
+            if outcome == "clicked":
+                log("✅ Cookie: нажали «Разрешить все».")
+            else:
+                log("🧹 Cookie: баннер удалён/скрыт.")
+            return True
+        time.sleep(0.25)
+
+    # Попробуем сделать то же самое во всех iframe
     try:
-        driver.execute_script("""const b=document.querySelector('.tiktok-cookie-banner');if(b)b.remove();""")
-        log("🧹 Баннер cookie удалён.")
-    except Exception as e:
-        log(f"⚠️ Баннер не удалён: {e}")
+        frames = driver.find_elements(By.TAG_NAME, "iframe")
+        for idx, frame in enumerate(frames):
+            try:
+                driver.switch_to.frame(frame)
+                for _ in range(8):  # короткие попытки внутри фрейма
+                    outcome = try_here()
+                    if outcome in ("clicked", "removed"):
+                        driver.switch_to.default_content()
+                        log(f"✅ Cookie в iframe #{idx}: {outcome}.")
+                        return True
+                    time.sleep(0.2)
+                driver.switch_to.default_content()
+            except Exception:
+                driver.switch_to.default_content()
+    except Exception:
+        pass
+
+    # На всякий случай — последний штрих: провалимся не будет
+    log("🚫 Cookie-баннер не закрыт (возможен закрытый Shadow DOM).")
+    return False
 
 def get_video_and_title():
     videos = [f for f in os.listdir(VIDEO_FOLDER) if f.endswith((".mp4", ".mov"))]
@@ -146,11 +275,10 @@ def upload_video():
         load_cookies(driver, COOKIES_FILE)
 
         driver.get(TIKTOK_UPLOAD_URL)
-        remove_cookie_banner(driver)
 
         upload_input = wait.until(EC.presence_of_element_located((By.XPATH, '//input[@type="file"]')))
         upload_input.send_keys(os.path.abspath(os.path.join(VIDEO_FOLDER, video_file)))
-
+        remove_cookie_banner(driver,timeout=3, prefer="accept")
         wait.until(EC.presence_of_element_located((By.XPATH, '//span[contains(text(), "Загружено")]')))
 
         caption = wait.until(EC.presence_of_element_located((By.XPATH, '//div[@contenteditable="true"]')))
