@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 # Проверяем версию Python
 if sys.version_info < (3, 8):
-    print("❌ Требуется Python 3.8 или выше")
+    print("ERROR: Python 3.8 or higher required")
     sys.exit(1)
 
 try:
@@ -24,9 +24,9 @@ try:
     from src.gui.web_interface import WebInterface
     from src.core.config_manager import ConfigManager
 except ImportError as e:
-    print(f"❌ Ошибка импорта: {e}")
-    print("💡 Попробуйте запустить: python setup_v2.py")
-    print("💡 Или установите зависимости: pip install -r requirements_minimal.txt")
+    print(f"ERROR: Import error: {e}")
+    print("TIP: Try running: python setup_v2.py")
+    print("TIP: Or install dependencies: pip install -r requirements_minimal.txt")
     sys.exit(1)
 
 def setup_cli():
@@ -50,10 +50,10 @@ async def run_single_upload(app: UploaderApp, video_path: str, platform: str, ti
     """Выполняет разовую загрузку видео"""
     video_file = Path(video_path)
     if not video_file.exists():
-        print(f"❌ Video file not found: {video_path}")
+        print(f"ERROR: Video file not found: {video_path}")
         return False
     
-    print(f"🚀 Starting upload: {video_file.name} to {platform}")
+    print(f"Starting upload: {video_file.name} to {platform}")
     
     result = app.upload_single_video(
         platform_name=platform,
@@ -62,26 +62,26 @@ async def run_single_upload(app: UploaderApp, video_path: str, platform: str, ti
     )
     
     if result.success:
-        print(f"✅ Upload successful: {result.message}")
+        print(f"SUCCESS: Upload successful: {result.message}")
         if result.url:
-            print(f"🔗 URL: {result.url}")
+            print(f"URL: {result.url}")
         return True
     else:
-        print(f"❌ Upload failed: {result.message}")
+        print(f"ERROR: Upload failed: {result.message}")
         return False
 
 async def run_batch_upload(app: UploaderApp, platform: str, max_videos: int):
     """Планирует пакетную загрузку"""
-    print(f"📦 Scheduling batch upload: {max_videos} videos to {platform}")
+    print(f"Scheduling batch upload: {max_videos} videos to {platform}")
     
     task_ids = app.schedule_batch_upload(platform, max_videos)
     
     if task_ids:
-        print(f"✅ Scheduled {len(task_ids)} tasks:")
+        print(f"SUCCESS: Scheduled {len(task_ids)} tasks:")
         for task_id in task_ids:
             print(f"   - {task_id}")
         
-        print("\n🔄 Waiting for tasks to complete...")
+        print("\nWaiting for tasks to complete...")
         print("Press Ctrl+C to stop monitoring\n")
         
         try:
@@ -91,24 +91,24 @@ async def run_batch_upload(app: UploaderApp, platform: str, max_videos: int):
                     break
                 
                 stats = app.scheduler.get_queue_stats()
-                print(f"\r📊 Running: {stats['running']}, Pending: {stats['pending']}, "
+                print(f"\rSTATUS: Running: {stats['running']}, Pending: {stats['pending']}, "
                       f"Completed: {stats['completed']}, Failed: {stats['failed']}", end="", flush=True)
                 
                 if stats['running'] == 0 and stats['pending'] == 0:
-                    print(f"\n✅ All tasks completed!")
+                    print(f"\nSUCCESS: All tasks completed!")
                     break
                 
                 await asyncio.sleep(2)
                 
         except KeyboardInterrupt:
-            print(f"\n\n⏹️  Monitoring stopped. Tasks will continue in background.")
+            print(f"\n\nMonitoring stopped. Tasks will continue in background.")
             
     else:
-        print("❌ No tasks were scheduled")
+        print("ERROR: No tasks were scheduled")
 
 async def run_gui_mode(app: UploaderApp, host: str, port: int, debug: bool):
     """Запускает приложение в GUI режиме"""
-    print(f"🌐 Starting web interface at http://{host}:{port}")
+    print(f"Starting web interface at http://{host}:{port}")
     
     web_interface = WebInterface(app)
     
@@ -118,17 +118,17 @@ async def run_gui_mode(app: UploaderApp, host: str, port: int, debug: bool):
     )
     
     try:
-        print("✅ Web interface started successfully!")
-        print(f"🎯 Open http://{host}:{port} in your browser")
+        print("SUCCESS: Web interface started successfully!")
+        print(f"Open http://{host}:{port} in your browser")
         print("Press Ctrl+C to stop the server\n")
         
         await server_task
         
     except KeyboardInterrupt:
-        print("\n🛑 Shutting down web interface...")
+        print("\nShutting down web interface...")
         server_task.cancel()
     except Exception as e:
-        print(f"❌ Web interface error: {e}")
+        print(f"ERROR: Web interface error: {e}")
 
 async def main():
     """Основная функция приложения"""
@@ -138,7 +138,7 @@ async def main():
     if args.debug:
         logging.basicConfig(level=logging.DEBUG)
     
-    print("🎬 Video Uploader v2.0")
+    print("Video Uploader v2.0")
     print("=" * 50)
     
     try:
@@ -148,14 +148,14 @@ async def main():
         
         # Показываем статус приложения
         status = app.get_app_status()
-        print(f"📁 Videos directory: {status['config']['videos_dir']}")
-        print(f"📤 Uploaded directory: {status['config']['uploaded_dir']}")  
-        print(f"🎯 Available platforms: {', '.join(status['platforms'])}")
-        print(f"📊 Pending videos: {status['file_stats']['videos_count']}")
+        print(f"Videos directory: {status['config']['videos_dir']}")
+        print(f"Uploaded directory: {status['config']['uploaded_dir']}")  
+        print(f"Available platforms: {', '.join(status['platforms'])}")
+        print(f"Pending videos: {status['file_stats']['videos_count']}")
         
         if status['config']['scheduler_enabled']:
             scheduler_stats = status.get('scheduler', {})
-            print(f"⏰ Scheduler: {scheduler_stats.get('total_tasks', 0)} total tasks")
+            print(f"Scheduler: {scheduler_stats.get('total_tasks', 0)} total tasks")
         
         print()
         
@@ -174,23 +174,23 @@ async def main():
             
         elif args.no_gui:
             # Режим без GUI - просто держим приложение запущенным
-            print("🔄 Running in background mode...")
+            print("Running in background mode...")
             print("Press Ctrl+C to stop\n")
             
             try:
                 while True:
                     await asyncio.sleep(1)
             except KeyboardInterrupt:
-                print("\n🛑 Stopping background service...")
+                print("\nStopping background service...")
                 
         else:
             # GUI режим (по умолчанию)
             await run_gui_mode(app, args.host, args.port, args.debug)
         
     except KeyboardInterrupt:
-        print("\n🛑 Interrupted by user")
+        print("\nInterrupted by user")
     except Exception as e:
-        print(f"❌ Application error: {e}")
+        print(f"ERROR: Application error: {e}")
         if args.debug:
             import traceback
             traceback.print_exc()
@@ -208,7 +208,7 @@ def cli():
         exit_code = asyncio.run(main())
         sys.exit(exit_code)
     except KeyboardInterrupt:
-        print("\n👋 Goodbye!")
+        print("\nGoodbye!")
         sys.exit(0)
 
 if __name__ == "__main__":

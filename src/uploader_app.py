@@ -7,7 +7,7 @@ from datetime import datetime
 
 from .core.config_manager import ConfigManager, AppConfig
 from .core.logger import LoggerManager, setup_exception_logging
-from .core.file_manager import FileManager
+from .core.file_manager import FileManager, VideoFile
 from .core.scheduler import TaskScheduler, TaskPriority
 from .core.platform_base import VideoMetadata, UploadResult
 from .platforms.tiktok_uploader import TikTokUploader
@@ -212,7 +212,7 @@ class UploaderApp:
             
             if result.success:
                 # Перемещаем видео в папку загруженных
-                video_file = self.file_manager.VideoFile.from_path(video_path)
+                video_file = VideoFile.from_path(video_path)
                 self.file_manager.move_to_uploaded(video_file)
                 
                 # Убираем использованный заголовок
@@ -307,7 +307,7 @@ class UploaderApp:
         if success:
             # Перемещаем видео в папку загруженных
             try:
-                video_file = self.file_manager.VideoFile.from_path(task.video_path)
+                video_file = VideoFile.from_path(task.video_path)
                 self.file_manager.move_to_uploaded(video_file)
                 self.logger.info(f"Video moved to uploaded: {task.video_path.name}")
             except Exception as e:
