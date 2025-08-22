@@ -9,7 +9,7 @@ import threading
 import time
 from pathlib import Path
 import json
-from queue import Queue, PriorityQueue
+from queue import Queue, PriorityQueue, Empty
 import uuid
 
 class TaskStatus(Enum):
@@ -246,7 +246,11 @@ class TaskScheduler:
         while self.is_running:
             try:
                 # Получаем задачу из очереди с timeout
-                task = self.task_queue.get(timeout=1)
+                try:
+                    task = self.task_queue.get(timeout=1)
+                except Empty:
+                    # Нет задач в очереди, продолжаем
+                    continue
                 
                 # Проверяем, что задача еще актуальна
                 with self.lock:
@@ -293,7 +297,7 @@ class TaskScheduler:
                     
             except Exception as e:
                 if self.is_running:  # Игнорируем ошибки при остановке
-                    self.logger.error(f"Worker loop error: {e}")
+                    self.logger.error(f"Worker loop error: {e}", exc_info=True)
                 continue
     
     def _schedule_loop(self):
@@ -319,7 +323,7 @@ class TaskScheduler:
                 time.sleep(30)  # Проверяем каждые 30 секунд
                 
             except Exception as e:
-                self.logger.error(f"Schedule loop error: {e}")
+                self.logger.error(f"Schedule loop error: {e}", exc_info=True)
                 time.sleep(30)
     
     def _execute_task(self, task: ScheduledTask) -> bool:

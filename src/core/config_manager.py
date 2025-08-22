@@ -188,8 +188,16 @@ class ConfigManager:
             tiktok_config = PlatformConfig(**tiktok_data) if tiktok_data else PlatformConfig()
             instagram_config = PlatformConfig(**instagram_data) if instagram_data else PlatformConfig()
             
-            # Создаем основную конфигурацию
-            main_config = {k: v for k, v in config_data.items() if k not in ['tiktok', 'instagram']}
+            # Создаем основную конфигурацию, оставляем только известные поля
+            known_fields = {
+                'videos_dir', 'uploaded_dir', 'titles_file', 
+                'telegram_enabled', 'telegram_token', 'telegram_chat_id',
+                'log_level', 'log_file',
+                'scheduler_enabled', 'max_concurrent_uploads',
+                'gui_enabled', 'gui_host', 'gui_port'
+            }
+            
+            main_config = {k: v for k, v in config_data.items() if k in known_fields}
             main_config['tiktok'] = tiktok_config
             main_config['instagram'] = instagram_config
             
