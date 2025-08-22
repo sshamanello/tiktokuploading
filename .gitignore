@@ -170,3 +170,4 @@ secrets.json
 *.secret
 
 tiktok_uploader\tiktok-signature\command.txt
+nul
