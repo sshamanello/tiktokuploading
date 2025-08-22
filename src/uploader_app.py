@@ -57,7 +57,11 @@ class UploaderApp:
         
         # Инициализация платформ
         self.platforms = {}
-        self._init_platforms()
+        try:
+            self._init_platforms()
+        except Exception as e:
+            self.logger.error(f"Critical error during platform initialization: {e}")
+            self.logger.debug("Platform initialization error details:", exc_info=True)
         
         # Состояние приложения
         self.is_running = False
@@ -84,6 +88,8 @@ class UploaderApp:
     
     def _init_platforms(self):
         """Инициализирует платформы для загрузки"""
+        self.logger.info("Initializing platforms...")
+        
         # TikTok
         if self.config.tiktok.enabled:
             tiktok_config = {
@@ -94,11 +100,15 @@ class UploaderApp:
                 'retry_attempts': self.config.tiktok.retry_attempts
             }
             
-            self.platforms['tiktok'] = TikTokUploader(
-                tiktok_config,
-                self.logger_manager.get_logger('tiktok')
-            )
-            self.logger.info("TikTok uploader initialized")
+            try:
+                self.platforms['tiktok'] = TikTokUploader(
+                    tiktok_config,
+                    self.logger_manager.get_logger('tiktok')
+                )
+                self.logger.info("TikTok uploader initialized successfully")
+            except Exception as e:
+                self.logger.error(f"Failed to initialize TikTok uploader: {e}")
+                self.logger.debug("TikTok initialization error details:", exc_info=True)
         
         # Instagram
         if self.config.instagram.enabled:
@@ -110,11 +120,17 @@ class UploaderApp:
                 'retry_attempts': self.config.instagram.retry_attempts
             }
             
-            self.platforms['instagram'] = InstagramUploader(
-                instagram_config,
-                self.logger_manager.get_logger('instagram')
-            )
-            self.logger.info("Instagram uploader initialized (not implemented yet)")
+            try:
+                self.platforms['instagram'] = InstagramUploader(
+                    instagram_config,
+                    self.logger_manager.get_logger('instagram')
+                )
+                self.logger.info("Instagram uploader initialized (not implemented yet)")
+            except Exception as e:
+                self.logger.error(f"Failed to initialize Instagram uploader: {e}")
+                self.logger.debug("Instagram initialization error details:", exc_info=True)
+        
+        self.logger.info(f"Platform initialization complete. Available platforms: {list(self.platforms.keys())}")
     
     async def start(self):
         """Запускает приложение"""

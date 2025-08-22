@@ -249,7 +249,11 @@ class TikTokUploader(Platform):
             root_path = Path(__file__).parent.parent.parent
             sys.path.insert(0, str(root_path))
             
-            from proxy_manager import ProxyManager
+            try:
+                from proxy_manager import ProxyManager
+            except ImportError as e:
+                self.logger.warning(f"Could not import ProxyManager: {e}. Using basic Chrome options.")
+                return self._create_basic_driver()
             
             # Создаем прокси менеджер
             proxy_manager = ProxyManager()
@@ -273,6 +277,37 @@ class TikTokUploader(Platform):
             
         except Exception as e:
             self.logger.error(f"Failed to create WebDriver: {e}")
+            return None
+    
+    def _create_basic_driver(self):
+        """Создает базовый WebDriver без прокси"""
+        try:
+            options = uc.ChromeOptions()
+            
+            # Базовые настройки
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument("--disable-blink-features=AutomationControlled")
+            options.add_experimental_option("excludeSwitches", ["enable-automation"])
+            options.add_experimental_option('useAutomationExtension', False)
+            
+            # Создаем драйвер
+            driver = uc.Chrome(version_main=None, options=options)
+            
+            # Убираем следы автоматизации
+            driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
+                "source": """
+                    Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+                    Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
+                    Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
+                """
+            })
+            
+            self.logger.info("Basic Chrome driver created successfully")
+            return driver
+            
+        except Exception as e:
+            self.logger.error(f"Failed to create basic WebDriver: {e}")
             return None
     
     def _handle_cookie_banner(self):
