@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, UploadFile, File, Form
+from websockets.exceptions import ConnectionClosedOK
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -27,19 +28,29 @@ class WebSocketManager:
         self.active_connections.remove(websocket)
     
     async def send_message(self, message: dict, websocket: WebSocket):
-        await websocket.send_text(json.dumps(message))
+        try:
+            await websocket.send_text(json.dumps(message))
+        except Exception:
+            # Соединение разорвано, удаляем его
+            await self.disconnect_safe(websocket)
     
     async def broadcast(self, message: dict):
-        for connection in self.active_connections:
+        # Создаем копию списка для безопасной итерации
+        connections_copy = list(self.active_connections)
+        for connection in connections_copy:
             try:
                 await connection.send_text(json.dumps(message))
-            except:
+            except Exception:
                 # Соединение разорвано, удаляем его
                 await self.disconnect_safe(connection)
     
     async def disconnect_safe(self, websocket: WebSocket):
-        if websocket in self.active_connections:
-            self.active_connections.remove(websocket)
+        try:
+            if websocket in self.active_connections:
+                self.active_connections.remove(websocket)
+        except Exception:
+            # Игнорируем ошибки при удалении соединения
+            pass
 
 class WebInterface:
     """Веб-интерфейс для управления загрузчиком"""
@@ -56,10 +67,12 @@ class WebInterface:
         self.websocket_manager = WebSocketManager()
         
         # Настройка шаблонов и статических файлов
-        self.templates = Jinja2Templates(directory="src/gui/templates")
+        current_dir = Path(__file__).parent
+        templates_dir = current_dir / "templates"
+        self.templates = Jinja2Templates(directory=str(templates_dir))
         
         # Создаем директорию для статических файлов если не существует
-        static_dir = Path("src/gui/static")
+        static_dir = current_dir / "static"
         static_dir.mkdir(parents=True, exist_ok=True)
         
         self.app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
@@ -300,12 +313,94 @@ class WebInterface:
             
             return {"success": success}
         
+        @self.app.post("/api/daily-schedule")
+        async def setup_daily_schedule(
+            platform: str = Form(...),
+            times_per_day: int = Form(3),
+            upload_times: Optional[str] = Form(None)  # JSON строка с временами
+        ):
+            """API для настройки ежедневного планирования"""
+            try:
+                if not self.uploader_app.scheduler:
+                    return JSONResponse({"success": False, "message": "Scheduler not enabled"})
+                
+                # Парсим времена если переданы
+                parsed_times = None
+                if upload_times:
+                    try:
+                        import json
+                        parsed_times = json.loads(upload_times)
+                    except json.JSONDecodeError:
+                        return JSONResponse({"success": False, "message": "Invalid upload_times format"})
+                
+                task_ids = self.uploader_app.scheduler.schedule_daily_uploads(
+                    platform=platform,
+                    times_per_day=times_per_day,
+                    upload_times=parsed_times
+                )
+                
+                if task_ids:
+                    await self.websocket_manager.broadcast({
+                        "type": "daily_schedule_created",
+                        "data": {
+                            "platform": platform,
+                            "times_per_day": times_per_day,
+                            "task_ids": task_ids
+                        }
+                    })
+                    
+                    return {
+                        "success": True, 
+                        "message": f"Daily schedule created for {platform}",
+                        "task_ids": task_ids,
+                        "times_per_day": times_per_day
+                    }
+                else:
+                    return JSONResponse({"success": False, "message": "Failed to create daily schedule"})
+                
+            except Exception as e:
+                self.logger.error(f"Daily schedule API error: {e}")
+                return JSONResponse(
+                    {"success": False, "message": f"Daily scheduling failed: {e}"},
+                    status_code=500
+                )
+        
+        @self.app.delete("/api/daily-schedule")
+        async def clear_daily_schedule(platform: Optional[str] = None):
+            """API для очистки ежедневного планирования"""
+            try:
+                if not self.uploader_app.scheduler:
+                    return JSONResponse({"success": False, "message": "Scheduler not enabled"})
+                
+                self.uploader_app.scheduler.clear_daily_uploads(platform)
+                
+                await self.websocket_manager.broadcast({
+                    "type": "daily_schedule_cleared",
+                    "data": {"platform": platform}
+                })
+                
+                return {
+                    "success": True,
+                    "message": f"Daily schedule cleared" + (f" for {platform}" if platform else "")
+                }
+                
+            except Exception as e:
+                self.logger.error(f"Clear daily schedule API error: {e}")
+                return JSONResponse(
+                    {"success": False, "message": f"Failed to clear schedule: {e}"},
+                    status_code=500
+                )
+        
         @self.app.websocket("/ws")
         async def websocket_endpoint(websocket: WebSocket):
             """WebSocket endpoint для real-time уведомлений"""
             await self.websocket_manager.connect(websocket)
             try:
                 while True:
+                    # Проверяем, что соединение еще активно
+                    if websocket not in self.websocket_manager.active_connections:
+                        break
+                        
                     # Отправляем периодические обновления статуса
                     status = self.uploader_app.get_app_status()
                     await self.websocket_manager.send_message({
@@ -315,8 +410,10 @@ class WebInterface:
                     
                     await asyncio.sleep(5)  # Обновляем каждые 5 секунд
                     
-            except WebSocketDisconnect:
-                self.websocket_manager.disconnect(websocket)
+            except (WebSocketDisconnect, ConnectionClosedOK, Exception) as e:
+                self.logger.debug(f"WebSocket disconnected: {e}")
+            finally:
+                await self.websocket_manager.disconnect_safe(websocket)
     
     async def _on_task_start(self, task):
         """Callback для начала задачи"""
@@ -362,5 +459,19 @@ class WebInterface:
             host=host,
             port=port,
             log_level="info" if not debug else "debug",
-            reload=debug
+            reload=False  # Отключаем reload, так как он несовместим с нашей архитектурой
         )
+    
+    async def serve(self, host: str = "127.0.0.1", port: int = 8080, debug: bool = False):
+        """Асинхронный запуск веб-сервера"""
+        self.logger.info(f"Starting async web interface on http://{host}:{port}")
+        
+        config = uvicorn.Config(
+            self.app,
+            host=host,
+            port=port,
+            log_level="info" if not debug else "debug",
+            reload=False
+        )
+        server = uvicorn.Server(config)
+        await server.serve()

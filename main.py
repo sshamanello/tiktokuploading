@@ -26,13 +26,13 @@ try:
 except ImportError as e:
     print(f"ERROR: Import error: {e}")
     print("TIP: Try running: python setup_v2.py")
-    print("TIP: Or install dependencies: pip install -r requirements_minimal.txt")
+    print("TIP: Or install dependencies: pip install -r requirements.txt")
     sys.exit(1)
 
 def setup_cli():
     """Настройка аргументов командной строки"""
     parser = argparse.ArgumentParser(description="Video Uploader v2.0")
-    parser.add_argument("--config", "-c", help="Path to config file", default="config.yaml")
+    parser.add_argument("--config", "-c", help="Path to config file", default="data/config.yaml")
     parser.add_argument("--gui", "-g", action="store_true", help="Start with GUI (default)")
     parser.add_argument("--no-gui", action="store_true", help="Start without GUI")
     parser.add_argument("--upload", "-u", help="Upload single video immediately", metavar="VIDEO_PATH")
@@ -112,23 +112,20 @@ async def run_gui_mode(app: UploaderApp, host: str, port: int, debug: bool):
     
     web_interface = WebInterface(app)
     
-    # Запускаем веб-сервер в отдельной задаче
-    server_task = asyncio.create_task(
-        asyncio.to_thread(web_interface.run, host, port, debug)
-    )
-    
     try:
-        print("SUCCESS: Web interface started successfully!")
+        print("SUCCESS: Web interface starting...")
         print(f"Open http://{host}:{port} in your browser")
         print("Press Ctrl+C to stop the server\n")
         
-        await server_task
+        # Запускаем асинхронно
+        await web_interface.serve(host, port, debug)
         
     except KeyboardInterrupt:
         print("\nShutting down web interface...")
-        server_task.cancel()
     except Exception as e:
         print(f"ERROR: Web interface error: {e}")
+        import traceback
+        traceback.print_exc()
 
 async def main():
     """Основная функция приложения"""

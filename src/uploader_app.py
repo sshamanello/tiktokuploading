@@ -9,6 +9,7 @@ from .core.config_manager import ConfigManager, AppConfig
 from .core.logger import LoggerManager, setup_exception_logging
 from .core.file_manager import FileManager, VideoFile
 from .core.scheduler import TaskScheduler, TaskPriority
+from .core.scheduled_uploader import ScheduledUploader, ScheduleType, UploadSchedule
 from .core.platform_base import VideoMetadata, UploadResult
 from .platforms.tiktok_uploader import TikTokUploader
 from .platforms.instagram_uploader import InstagramUploader
@@ -46,6 +47,8 @@ class UploaderApp:
         )
         
         self.scheduler = None
+        self.scheduled_uploader = None
+        
         if self.config.scheduler_enabled:
             self.scheduler = TaskScheduler(
                 config={
@@ -53,6 +56,19 @@ class UploaderApp:
                     'scheduler_state_file': './scheduler_state.json'
                 },
                 logger=self.logger_manager.get_logger('scheduler')
+            )
+            
+            # Инициализируем планировщик расписаний
+            self.scheduled_uploader = ScheduledUploader(
+                config={
+                    'videos_dir': self.config.videos_dir,
+                    'titles_file': self.config.titles_file,
+                    'schedules_file': './schedules.json',
+                    'used_videos_file': './used_videos.json',
+                    'used_titles_file': './used_titles.json'
+                },
+                logger=self.logger_manager.get_logger('scheduled_uploader'),
+                scheduler=self.scheduler
             )
         
         # Инициализация платформ
@@ -145,10 +161,15 @@ class UploaderApp:
         if self.scheduler:
             self.scheduler.start()
             
-            # Настраиваем callbacks
+            # Настраиваем callbacks и executor
             self.scheduler.on_task_start = self._on_task_start
             self.scheduler.on_task_complete = self._on_task_complete
             self.scheduler.on_task_fail = self._on_task_fail
+            self.scheduler.task_executor = self._execute_scheduled_task
+        
+        # Запускаем планировщик расписаний
+        if self.scheduled_uploader:
+            self.scheduled_uploader.start_scheduler()
         
         # Добавляем обработчики сигналов для graceful shutdown
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -164,7 +185,10 @@ class UploaderApp:
         self.logger.info("Stopping UploaderApp...")
         self.is_running = False
         
-        # Останавливаем планировщик
+        # Останавливаем планировщики
+        if self.scheduled_uploader:
+            self.scheduled_uploader.stop_scheduler()
+            
         if self.scheduler:
             self.scheduler.stop()
         
@@ -279,6 +303,49 @@ class UploaderApp:
         self.logger.info(f"Scheduled {len(task_ids)} videos for batch upload")
         return task_ids
     
+    # Методы для работы с расписаниями
+    def create_upload_schedule(self, name: str, platform: str, schedule_type: ScheduleType,
+                              upload_times: List[str], days_of_week: List[int] = None,
+                              max_videos_per_day: int = 5, **kwargs) -> Optional[str]:
+        """Создает новое расписание загрузок"""
+        if not self.scheduled_uploader:
+            self.logger.error("Scheduled uploader not enabled")
+            return None
+            
+        return self.scheduled_uploader.create_schedule(
+            name=name,
+            platform=platform,
+            schedule_type=schedule_type,
+            upload_times=upload_times,
+            days_of_week=days_of_week,
+            max_videos_per_day=max_videos_per_day,
+            **kwargs
+        )
+    
+    def get_upload_schedules(self) -> List[UploadSchedule]:
+        """Получает все расписания"""
+        if not self.scheduled_uploader:
+            return []
+        return self.scheduled_uploader.get_all_schedules()
+    
+    def get_schedule_stats(self) -> Dict[str, Any]:
+        """Получает статистику расписаний"""
+        if not self.scheduled_uploader:
+            return {}
+        return self.scheduled_uploader.get_schedule_stats()
+    
+    def update_upload_schedule(self, schedule_id: str, **kwargs) -> bool:
+        """Обновляет расписание"""
+        if not self.scheduled_uploader:
+            return False
+        return self.scheduled_uploader.update_schedule(schedule_id, **kwargs)
+    
+    def delete_upload_schedule(self, schedule_id: str) -> bool:
+        """Удаляет расписание"""
+        if not self.scheduled_uploader:
+            return False
+        return self.scheduled_uploader.delete_schedule(schedule_id)
+    
     def get_app_status(self) -> Dict[str, Any]:
         """Получает статус приложения"""
         status = {
@@ -295,6 +362,9 @@ class UploaderApp:
         
         if self.scheduler:
             status['scheduler'] = self.scheduler.get_queue_stats()
+        
+        if self.scheduled_uploader:
+            status['schedule_stats'] = self.scheduled_uploader.get_schedule_stats()
         
         return status
     
@@ -318,6 +388,47 @@ class UploaderApp:
     def _on_task_fail(self, task):
         """Callback при неудачном выполнении задачи"""
         self.logger.error(f"Task failed permanently: {task.id} - {task.last_error}")
+    
+    def _execute_scheduled_task(self, task) -> bool:
+        """Выполняет запланированную задачу загрузки"""
+        try:
+            if task.platform not in self.platforms:
+                self.logger.error(f"Platform {task.platform} not configured")
+                return False
+            
+            platform = self.platforms[task.platform]
+            
+            # Подготавливаем метаданные
+            metadata = VideoMetadata(
+                file_path=task.video_path,
+                title=task.title,
+                description=task.description,
+                tags=task.tags
+            )
+            
+            self.logger.info(f"Executing scheduled task: {task.video_path.name} to {task.platform}")
+            
+            # Аутентификация если нужна
+            if not platform.authenticate():
+                self.logger.error(f"Authentication failed for {task.platform}")
+                return False
+            
+            # Выполняем загрузку
+            result = platform.upload_video(metadata)
+            
+            if result.success:
+                self.logger.info(f"Scheduled upload successful: {result.message}")
+                return True
+            else:
+                self.logger.error(f"Scheduled upload failed: {result.message}")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"Scheduled task execution error: {e}")
+            return False
+        finally:
+            if task.platform in self.platforms:
+                self.platforms[task.platform].cleanup()
     
     def _signal_handler(self, signum, frame):
         """Обработчик сигналов для graceful shutdown"""

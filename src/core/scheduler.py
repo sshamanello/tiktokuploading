@@ -329,23 +329,16 @@ class TaskScheduler:
     def _execute_task(self, task: ScheduledTask) -> bool:
         """Выполняет задачу загрузки"""
         try:
-            # Здесь должна быть интеграция с platform uploaders
-            # Пока делаем заглушку
-            
             self.logger.info(f"Executing task: {task.platform} upload of {task.video_path.name}")
             
-            # Имитация работы
-            time.sleep(2)
+            # Если у нас есть callback для выполнения задач, используем его
+            if hasattr(self, 'task_executor') and self.task_executor:
+                return self.task_executor(task)
             
-            # В реальной реализации:
-            # 1. Создать uploader для платформы
-            # 2. Подготовить метаданные
-            # 3. Выполнить upload
-            # 4. Обработать результат
-            
-            # Временная заглушка - 90% успех
-            import random
-            return random.random() > 0.1
+            # Заглушка для демонстрации - имитируем успешную загрузку
+            self.logger.info(f"Mock upload completed for {task.video_path.name}")
+            time.sleep(2)  # Имитация времени загрузки
+            return True
             
         except Exception as e:
             self.logger.error(f"Task execution failed: {e}")
@@ -445,3 +438,100 @@ class TaskScheduler:
             
         except Exception as e:
             self.logger.error(f"Failed to load scheduler state: {e}")
+    
+    def schedule_daily_uploads(self, platform: str, times_per_day: int = 3, 
+                              upload_times: List[str] = None) -> List[str]:
+        """
+        Планирует ежедневные загрузки видео N раз в день
+        
+        Args:
+            platform: Платформа для загрузки (tiktok, instagram, etc.)
+            times_per_day: Количество загрузок в день (по умолчанию 3)
+            upload_times: Список времен загрузки в формате "HH:MM" (например: ["09:00", "15:00", "21:00"])
+                         Если не указан, будет распределено равномерно
+        
+        Returns:
+            Список ID созданных recurring задач
+        """
+        
+        if upload_times is None:
+            # Распределяем равномерно по дню
+            if times_per_day == 1:
+                upload_times = ["12:00"]
+            elif times_per_day == 2:
+                upload_times = ["10:00", "18:00"]
+            elif times_per_day == 3:
+                upload_times = ["09:00", "15:00", "21:00"]
+            elif times_per_day == 4:
+                upload_times = ["08:00", "12:00", "16:00", "20:00"]
+            else:
+                # Для большего количества раз - распределяем равномерно
+                interval = 24 // times_per_day
+                upload_times = [f"{(8 + i * interval) % 24:02d}:00" for i in range(times_per_day)]
+        
+        task_ids = []
+        
+        def create_upload_job(upload_time: str):
+            """Создает функцию для планирования загрузки в определенное время"""
+            def upload_job():
+                try:
+                    # Получаем список доступных видео
+                    from ..core.file_manager import FileManager
+                    file_manager = FileManager(self.config)
+                    videos = file_manager.get_pending_videos()
+                    
+                    if not videos:
+                        self.logger.info(f"No videos available for daily upload at {upload_time}")
+                        return
+                    
+                    # Берем первое доступное видео
+                    video = videos[0]
+                    
+                    # Создаем задачу на загрузку
+                    task_id = self.add_task(
+                        platform=platform,
+                        video_path=video.path,
+                        title=video.filename.replace('.mp4', ''),
+                        priority=TaskPriority.NORMAL,
+                        metadata={
+                            'daily_upload': True,
+                            'scheduled_time': upload_time,
+                            'auto_scheduled': True
+                        }
+                    )
+                    
+                    self.logger.info(f"Daily upload scheduled for {upload_time}: {video.filename} (task: {task_id})")
+                    
+                except Exception as e:
+                    self.logger.error(f"Error in daily upload job at {upload_time}: {e}")
+            
+            return upload_job
+        
+        # Планируем задачи для каждого времени
+        for upload_time in upload_times:
+            try:
+                job_func = create_upload_job(upload_time)
+                schedule.every().day.at(upload_time).do(job_func)
+                
+                # Генерируем уникальный ID для отслеживания
+                recurring_id = f"daily_{platform}_{upload_time.replace(':', '')}"
+                task_ids.append(recurring_id)
+                
+                self.logger.info(f"Scheduled daily uploads for {platform} at {upload_time}")
+                
+            except Exception as e:
+                self.logger.error(f"Failed to schedule daily upload at {upload_time}: {e}")
+        
+        return task_ids
+    
+    def clear_daily_uploads(self, platform: str = None):
+        """Очищает все ежедневные загрузки"""
+        # schedule.clear() очищает все задачи, поэтому нужно быть осторожным
+        # В реальной реализации лучше хранить ссылки на конкретные jobs
+        if platform:
+            self.logger.info(f"Clearing daily uploads for {platform}")
+        else:
+            self.logger.info("Clearing all daily uploads")
+            schedule.clear()
+        
+        # TODO: Реализовать селективную очистку по платформе

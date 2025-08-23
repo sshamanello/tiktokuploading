@@ -461,18 +461,11 @@ class TikTokUploader(Platform):
             root_path = Path(__file__).parent.parent.parent
             sys.path.insert(0, str(root_path))
             try:
-                from proxy_manager import ProxyManager
+                from scripts.proxy_manager import ProxyManager
             except ImportError as e:
                 self.logger.warning(
                     f"Could not import ProxyManager: {e}. Using basic Chrome options."
                 )
-                return self._create_basic_driver()
-
-            
-            try:
-                from proxy_manager import ProxyManager
-            except ImportError as e:
-                self.logger.warning(f"Could not import ProxyManager: {e}. Using basic Chrome options.")
                 return self._create_basic_driver()
             
             # Создаем прокси менеджер

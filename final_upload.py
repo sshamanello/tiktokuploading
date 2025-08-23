@@ -8,7 +8,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from datetime import datetime
 import undetected_chromedriver as uc
-from proxy_manager import ProxyManager
+from scripts.proxy_manager import ProxyManager
 import time
 
 
@@ -32,14 +32,14 @@ def log(msg):
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 VIDEO_FOLDER = os.path.join(BASE_DIR, "VideosDirPath")
 UPLOADED_FOLDER = os.path.join(BASE_DIR, "uploaded")
-TITLES_FILE = os.path.join(BASE_DIR, "titles.txt")
+TITLES_FILE = os.path.join(BASE_DIR, "data", "titles.txt")
 COOKIES_FILE = os.path.join(BASE_DIR, "CookiesDir", "tiktok_session-toptrailer82.cookie")
 TIKTOK_UPLOAD_URL = "https://www.tiktok.com/upload"
 os.makedirs(UPLOADED_FOLDER, exist_ok=True)
 
 # === TELEGRAM ===
 # Используем функцию из telegram_notify.py
-from telegram_notify import send_telegram_message
+from scripts.telegram_notify import send_telegram_message
 
 # === ДРАЙВЕР С ПРОКСИ ===
 def get_driver():

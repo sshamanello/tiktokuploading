@@ -204,6 +204,99 @@
 
             </div>
 
+            <!-- Daily Schedule Panel -->
+            <div class="bg-white rounded-lg shadow mt-8">
+                <div class="px-6 py-4 border-b border-gray-200">
+                    <h2 class="text-lg font-medium text-gray-900">
+                        <i class="fas fa-calendar-day mr-2"></i>Daily Auto-Upload Schedule
+                    </h2>
+                    <p class="text-sm text-gray-600 mt-1">Настройте автоматическую загрузку видео несколько раз в день</p>
+                </div>
+                <div class="p-6">
+                    <form @submit.prevent="setupDailySchedule()">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">Platform</label>
+                                    <select x-model="dailyScheduleForm.platform"
+                                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                        <template x-for="platform in platforms" :key="platform">
+                                            <option :value="platform" x-text="platform.charAt(0).toUpperCase() + platform.slice(1)"></option>
+                                        </template>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">Videos per Day</label>
+                                    <select x-model="dailyScheduleForm.timesPerDay" @change="updateDefaultTimes()"
+                                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                        <option value="1">1 раз в день</option>
+                                        <option value="2">2 раза в день</option>
+                                        <option value="3" selected>3 раза в день</option>
+                                        <option value="4">4 раза в день</option>
+                                        <option value="5">5 раз в день</option>
+                                        <option value="6">6 раз в день</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">Upload Times</label>
+                                    <div class="grid grid-cols-2 gap-2" x-show="dailyScheduleForm.timesPerDay <= 6">
+                                        <template x-for="(time, index) in dailyScheduleForm.uploadTimes" :key="index">
+                                            <input type="time" x-model="dailyScheduleForm.uploadTimes[index]"
+                                                   class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm">
+                                        </template>
+                                    </div>
+                                    <p class="text-xs text-gray-500 mt-1">Автоматически генерируется при выборе количества загрузок</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mt-6 flex justify-between">
+                            <div class="flex space-x-3">
+                                <button type="submit" :disabled="scheduling"
+                                        class="bg-orange-600 text-white py-2 px-4 rounded-lg hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                                    <span x-show="!scheduling">
+                                        <i class="fas fa-calendar-plus mr-2"></i>Setup Daily Schedule
+                                    </span>
+                                    <span x-show="scheduling">
+                                        <i class="fas fa-spinner fa-spin mr-2"></i>Setting up...
+                                    </span>
+                                </button>
+
+                                <button type="button" @click="clearDailySchedule()"
+                                        class="bg-red-600 text-white py-2 px-4 rounded-lg hover:bg-red-700 transition-colors">
+                                    <i class="fas fa-calendar-times mr-2"></i>Clear Schedule
+                                </button>
+                            </div>
+
+                            <div x-show="dailyScheduleActive" class="flex items-center text-green-600">
+                                <i class="fas fa-check-circle mr-2"></i>
+                                <span class="text-sm font-medium">Daily schedule is active</span>
+                            </div>
+                        </div>
+
+                        <!-- Schedule Preview -->
+                        <div x-show="dailyScheduleForm.uploadTimes.length > 0" class="mt-6 p-4 bg-gray-50 rounded-lg">
+                            <h4 class="text-sm font-medium text-gray-900 mb-2">Schedule Preview:</h4>
+                            <div class="flex flex-wrap gap-2">
+                                <template x-for="(time, index) in dailyScheduleForm.uploadTimes" :key="index">
+                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                        <i class="fas fa-clock mr-1"></i>
+                                        <span x-text="time"></span>
+                                    </span>
+                                </template>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-2">
+                                <span x-text="dailyScheduleForm.timesPerDay"></span> video(s) will be uploaded daily at the specified times
+                            </p>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
             <!-- Tasks Table -->
             <div class="bg-white rounded-lg shadow mt-8">
                 <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
@@ -325,6 +418,15 @@
                     scheduledTime: '',
                     priority: 'normal'
                 },
+                
+                dailyScheduleForm: {
+                    platform: '{{ platforms[0] if platforms else "tiktok" }}',
+                    timesPerDay: 3,
+                    uploadTimes: ['09:00', '15:00', '21:00']
+                },
+                
+                scheduling: false,
+                dailyScheduleActive: false,
 
                 init() {
                     this.refreshData();
@@ -495,6 +597,89 @@
 
                 formatDate(dateString) {
                     return new Date(dateString).toLocaleString();
+                },
+
+                updateDefaultTimes() {
+                    const timesPerDay = parseInt(this.dailyScheduleForm.timesPerDay);
+                    let times = [];
+                    
+                    switch(timesPerDay) {
+                        case 1:
+                            times = ['12:00'];
+                            break;
+                        case 2:
+                            times = ['10:00', '18:00'];
+                            break;
+                        case 3:
+                            times = ['09:00', '15:00', '21:00'];
+                            break;
+                        case 4:
+                            times = ['08:00', '12:00', '16:00', '20:00'];
+                            break;
+                        case 5:
+                            times = ['08:00', '11:00', '14:00', '17:00', '20:00'];
+                            break;
+                        case 6:
+                            times = ['08:00', '10:30', '13:00', '15:30', '18:00', '20:30'];
+                            break;
+                        default:
+                            // Равномерное распределение
+                            const interval = 24 / timesPerDay;
+                            for (let i = 0; i < timesPerDay; i++) {
+                                const hour = Math.floor(8 + (i * interval)) % 24;
+                                times.push(`${hour.toString().padStart(2, '0')}:00`);
+                            }
+                    }
+                    
+                    this.dailyScheduleForm.uploadTimes = times;
+                },
+
+                async setupDailySchedule() {
+                    this.scheduling = true;
+                    const formData = new FormData();
+                    formData.append('platform', this.dailyScheduleForm.platform);
+                    formData.append('times_per_day', this.dailyScheduleForm.timesPerDay);
+                    formData.append('upload_times', JSON.stringify(this.dailyScheduleForm.uploadTimes));
+                    
+                    try {
+                        const response = await fetch('/api/daily-schedule', {
+                            method: 'POST',
+                            body: formData
+                        });
+                        
+                        const result = await response.json();
+                        
+                        if (result.success) {
+                            this.dailyScheduleActive = true;
+                            this.showNotification('success', 'Daily Schedule Created', 
+                                `${result.times_per_day} uploads per day scheduled for ${this.dailyScheduleForm.platform}`);
+                        } else {
+                            this.showNotification('error', 'Schedule Setup Failed', result.message);
+                        }
+                    } catch (error) {
+                        this.showNotification('error', 'Schedule Setup Failed', error.message);
+                    } finally {
+                        this.scheduling = false;
+                    }
+                },
+
+                async clearDailySchedule() {
+                    try {
+                        const response = await fetch('/api/daily-schedule', {
+                            method: 'DELETE'
+                        });
+                        
+                        const result = await response.json();
+                        
+                        if (result.success) {
+                            this.dailyScheduleActive = false;
+                            this.showNotification('success', 'Schedule Cleared', 'Daily schedule has been cleared');
+                        } else {
+                            this.showNotification('error', 'Failed to Clear Schedule', result.message);
+                        }
+                    } catch (error) {
+                        this.showNotification('error', 'Failed to Clear Schedule', error.message);
+                    }
                 }
             }
         }
