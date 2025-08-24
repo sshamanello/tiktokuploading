@@ -129,18 +129,48 @@ dmypy.json
 .pyre/
 
 # Personal Development Files
+data/cookies/
+data/CookiesDir/
 CookiesDir/
-CookiesDir/*
 VideosDirPath/
 *.cookie
 output/
 *.mp4
-youtube_downloader.py
-
+*.mov
+uploaded/
 
 node_modules/
 
-tests/*
-.idea/*
+# Виртуальные окружения
+venv/
+.venv/
 
-tiktok_uploader\tiktok-signature\command.txt
+# Кэш, временные файлы и логи
+__pycache__/
+*.py[cod]
+*.log
+.cache/
+data/logs/
+logs/
+
+# Файлы с куками и данными
+data/cookies/
+*.cookie
+
+# Файлы с видео
+VideosDirPath/
+uploaded/
+
+# Токены, ключи, данные
+data/titles.txt
+data/config.*
+.env
+
+# Telegram, API, секреты (если есть)
+secrets.json
+*.secret
+
+# Временные файлы
+nul
+task_stdout.log
+scheduler_state.json

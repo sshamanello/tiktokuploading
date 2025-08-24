@@ -1,0 +1,32 @@
+# Основные зависимости для TikTok Uploader
+
+# Selenium и веб-драйверы
+selenium>=4.15.0
+undetected-chromedriver>=3.5.0
+
+# Работа с файлами и видео
+Pillow>=10.0.0
+moviepy>=1.0.3
+
+# HTTP запросы и парсинг
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+lxml>=5.1.0
+
+# Конфигурация и переменные окружения
+python-dotenv>=1.0.0
+PyYAML>=6.0
+
+# Работа с прокси и аутентификацией
+PySocks>=1.7.1
+
+# Логирование и утилиты
+tqdm>=4.66.0
+colorama>=0.4.6
+
+# Для работы с YouTube (опционально)
+pytube @ git+https://github.com/pytube/pytube@a32fff39058a6f7e5e59ecd06a7467b71197ce35
+
+# Дополнительные зависимости
+fake-useragent>=1.4.0
+certifi>=2024.2.2
